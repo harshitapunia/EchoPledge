@@ -1,13 +1,13 @@
 [package]
-name = "echopledge"
+name = "proof_of_work"
 version = "0.1.0"
-description = "Created with Anchor"
+description = "ProofOfWork Anchor crate foundation"
 edition.workspace = true
 rust-version.workspace = true
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "echopledge"
+name = "proof_of_work"
 
 [features]
 default = []

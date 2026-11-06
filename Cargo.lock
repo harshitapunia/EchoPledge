@@ -505,7 +505,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "echopledge"
+name = "proof_of_work"
 version = "0.1.0"
 dependencies = [
  "anchor-lang",
