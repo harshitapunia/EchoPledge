@@ -1,14 +1,33 @@
 use anchor_lang::prelude::*;
 use proof_of_work::state::{CompletionRecord, Internship, Milestone, MilestoneStatus, Submission};
 
-fn assert_payload<T>(value: T, expected: &[u8], account_space: usize)
+fn assert_payload<T>(value: T, expected: &[u8], account_space: usize, discriminator: [u8; 8])
 where
-    T: AnchorSerialize + AnchorDeserialize + std::fmt::Debug + PartialEq,
+    T: AnchorSerialize
+        + AnchorDeserialize
+        + AccountSerialize
+        + AccountDeserialize
+        + Discriminator
+        + Owner
+        + std::fmt::Debug
+        + PartialEq,
 {
     let bytes = borsh::to_vec(&value).unwrap();
     assert_eq!(bytes, expected);
     assert_eq!(bytes.len() + 8, account_space);
     assert_eq!(T::try_from_slice(expected).unwrap(), value);
+    assert_eq!(T::owner(), proof_of_work::ID);
+    assert_eq!(T::DISCRIMINATOR, discriminator);
+
+    let mut account = Vec::new();
+    value.try_serialize(&mut account).unwrap();
+    assert_eq!(account.len(), account_space);
+    assert_eq!(&account[..8], &discriminator);
+    assert_eq!(&account[8..], expected);
+    assert_eq!(T::try_deserialize(&mut account.as_slice()).unwrap(), value);
+
+    account[0] ^= 0xff;
+    assert!(T::try_deserialize(&mut account.as_slice()).is_err());
 }
 
 #[test]
@@ -22,7 +41,12 @@ fn internship_matches_approved_payload() {
     expected.extend_from_slice(&[1; 32]);
     expected.extend_from_slice(&[1, 2, 0, 0, 0, 0, 0, 0]);
     expected.extend_from_slice(&[3]);
-    assert_payload(value, &expected, Internship::SPACE);
+    assert_payload(
+        value,
+        &expected,
+        Internship::SPACE,
+        [0x36, 0x5f, 0xf7, 0x02, 0x47, 0x8b, 0x7d, 0xce],
+    );
 }
 
 #[test]
@@ -62,7 +86,12 @@ fn milestone_matches_approved_payload() {
     expected.extend_from_slice(&[14]);
     expected.extend_from_slice(&[15]);
     expected.extend_from_slice(&[16]);
-    assert_payload(value, &expected, Milestone::SPACE);
+    assert_payload(
+        value,
+        &expected,
+        Milestone::SPACE,
+        [0x26, 0xd2, 0xef, 0xb1, 0x55, 0xb8, 0x0a, 0x2c],
+    );
 }
 
 #[test]
@@ -80,7 +109,12 @@ fn submission_matches_approved_payload() {
     expected.extend_from_slice(&[3; 32]);
     expected.extend_from_slice(&[252, 255, 255, 255, 255, 255, 255, 255]);
     expected.extend_from_slice(&[5]);
-    assert_payload(value, &expected, Submission::SPACE);
+    assert_payload(
+        value,
+        &expected,
+        Submission::SPACE,
+        [0x3a, 0xc2, 0x9f, 0x9e, 0x4b, 0x66, 0xb2, 0xc5],
+    );
 }
 
 #[test]
@@ -108,7 +142,12 @@ fn completion_record_matches_approved_payload() {
     expected.extend_from_slice(&[248, 255, 255, 255, 255, 255, 255, 255]);
     expected.extend_from_slice(&[247, 255, 255, 255, 255, 255, 255, 255]);
     expected.extend_from_slice(&[10]);
-    assert_payload(value, &expected, CompletionRecord::SPACE);
+    assert_payload(
+        value,
+        &expected,
+        CompletionRecord::SPACE,
+        [0x39, 0xc7, 0x21, 0xad, 0x02, 0xcc, 0x5c, 0xc2],
+    );
 }
 
 #[test]
