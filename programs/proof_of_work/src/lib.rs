@@ -1,4 +1,9 @@
-//! ProofOfWork Anchor crate foundation.
+//! Shared ProofOfWork types and instruction namespaces.
 //!
-//! Add the program identity and entry point after the team approves the
-//! shared contract and the Devnet deployment identity.
+//! The real program identity is required before adding Anchor account
+//! ownership and the on-chain program entry point.
+
+pub mod errors;
+pub mod instructions;
+pub mod seeds;
+pub mod state;
