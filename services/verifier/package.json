@@ -1,0 +1,16 @@
+{
+  "name": "@proofwork/verifier",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "tsc",
+    "test": "npm run build && node --test dist/test/*.test.js",
+    "start": "node dist/src/server.js",
+    "test:sandbox": "npm run build && node dist/test/sandbox.js"
+  },
+  "dependencies": { "@solana/web3.js": "1.98.4" },
+  "devDependencies": { "@types/node": "24.0.0", "typescript": "5.7.3" }
+}
