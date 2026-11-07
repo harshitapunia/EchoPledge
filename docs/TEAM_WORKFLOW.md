@@ -2,8 +2,10 @@
 
 | Owner | Responsibility |
 |---|---|
-| Palak | Blockchain Finance and Internship Engine. Design and create internship accounts, fund milestones, manage SPL escrow, secure PDAs and vaults, handle financial accounting and valid refunds, implement sponsor-side Solana TypeScript integration and financial security tests, and jointly review blockchain changes. |
-| Harshita | Blockchain Verification, Settlement and Integration Engine. Implement student assignment, work submissions, verification authorization, settlement, completion records and reputation accounting. Own the GitHub verification service, student-side Solana TypeScript integration, Devnet deployment coordination, settlement and authorization security tests, and joint blockchain review. |
-| Ganga | Complete frontend development. Own student and organization interfaces, internship listings, applications and selection screens, milestone progress, work submission, Proof Vault, funding and verification status, UI tests, and polish. |
+| Palak | Finance and Internship Engine. Own `create_internship`, `create_milestone`, `fund_milestone`, `settle_milestone`, and `refund_unclaimed_milestone`, plus escrow and token-transfer helpers, completion records, financial security tests, and the finance TypeScript client. |
+| Harshita | Verification and Integration Engine. Own `assign_student`, `submit_milestone`, and `attest_milestone`, plus the GitHub automated verification service, verification authorization and replay protection, verification security tests, the student and verification TypeScript client, and end-to-end integration coordination. |
+| Ganga | Complete frontend ownership in `apps/web/`. Own the organization and student dashboards, internship opportunities, Proof Vault, frontend UI tests, and frontend integration. |
 
 Palak and Harshita jointly approve shared account layouts, PDA seeds, status transitions, and instruction signatures before implementing on separate feature branches. Review changes to shared interfaces together before integration. Ganga consumes stable interfaces from both blockchain developers. Private signing keys and blockchain security enforcement stay outside the frontend.
+
+See [Shared Rust foundation](SHARED_FOUNDATION.md) for the shared modules and review boundaries.
