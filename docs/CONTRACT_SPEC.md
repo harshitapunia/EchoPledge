@@ -6,7 +6,7 @@
 
 The MVP allows one submission per milestone and has no dispute-resolution mechanism. Verifier silence triggers no automatic payout. A timely submission without successful verification may remain locked indefinitely. Use only non-monetary DEMO tokens on Solana Devnet.
 
-Implementation may proceed against the approved design. The actual Devnet program ID and classic SPL DEMO mint address still need to be supplied, along with deployment and upgrade authority configuration. This design approval does not authorize deployment or key generation.
+Implementation may proceed against the approved design. The Devnet program ID is recorded in the [shared foundation](SHARED_FOUNDATION.md). The classic SPL DEMO mint address and deployment and upgrade authority configuration are still required. This design approval does not authorize deployment or key generation.
 
 ## Accounts and serialization
 
@@ -23,7 +23,7 @@ Use Anchor accounts with the default 8-byte discriminator and Borsh serializatio
 
 ## Addresses and escrow
 
-Derive each address under the ProofOfWork program ID once supplied. Labels are literal ASCII bytes. Public keys use their raw 32-byte representation and numeric IDs use exactly 8 bytes little-endian.
+Derive each address under the configured ProofOfWork program ID. Labels are literal ASCII bytes. Public keys use their raw 32-byte representation and numeric IDs use exactly 8 bytes little-endian.
 
 | Address | Seeds before bump |
 |---|---|

@@ -20,7 +20,7 @@ Solana is used to hold committed rewards in program-controlled vaults, enforce s
 
 | Stage | Scope |
 |---|---|
-| Implemented | Rust/Anchor crate and Devnet configuration, reusable tooling, and draft design documents. The program entry point and identity await approval. |
+| Implemented | Shared Rust/Anchor foundation, approved MVP design, Devnet program identity, and Anchor account definitions. The program has no business instructions and has not been deployed. |
 | Planned | Internship and milestone accounts, escrow, submission, verification, settlement, completion records, tests, TypeScript integration, GitHub verification service, and student and organization UI. |
 | Future extension | Additional evidence types and use of completion records across participating organizations, subject to design and approval. |
 
@@ -38,7 +38,7 @@ cargo fmt --all -- --check
 cargo check --workspace --locked
 ```
 
-After the team approves a program identity and adds the Anchor entry point, the intended build command is `anchor build --tools-version v1.57 --arch v3`.
+See [Shared Rust foundation](docs/SHARED_FOUNDATION.md) for the public Devnet program ID and local Anchor build requirements.
 
 ## Devnet-only demo
 

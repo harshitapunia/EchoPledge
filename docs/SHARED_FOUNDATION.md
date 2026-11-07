@@ -14,4 +14,10 @@ Both teams use the same `MilestoneStatus`. Finance owns the creation and funding
 
 Keep `lib.rs`, `state/`, `seeds.rs`, `errors.rs`, and the shared `instructions/mod.rs` stable during parallel implementation. Coordinate public instruction contexts, vault CPI interfaces, and any ABI or fixture changes through joint review. Keep handler files within the appropriate team namespace. Ganga owns `apps/web/` and integrates against reviewed interfaces.
 
-The current types serialize account payloads and reserve eight additional bytes in their allocation constants. The real program ID is required to attach Anchor's `#[account]` ownership and discriminator behavior and define the on-chain entry point. Payload fixtures verify exact byte order and size independently of that identity. Program-specific PDA derivation, Anchor account validation, and deployment remain separate steps.
+The four state types use Anchor's `#[account]` macro. Their allocation constants include the eight-byte discriminator. ABI fixtures verify exact payload bytes, full account size, the discriminator, and program ownership.
+
+## Devnet program identity
+
+The public ProofOfWork program ID is `J2FkqDuuuHT14gxjVMhSryrX3Bs4Knct45NMLA79dGdZ`. It is configured in `Anchor.toml` under `[programs.devnet]` and in `programs/proof_of_work/src/lib.rs` via `declare_id!`. Collaborators use this public ID for clients and PDA derivation. The same seeds and a different program ID produce different PDA addresses. Keep the program keypair private. Collaborators do not need it for the host-side Rust checks.
+
+The Anchor entry point has no business instruction handlers. A local `anchor build --tools-version v1.57 --arch v3` checks the program scaffold only. Anchor's normal build expects a matching local program keypair in its ignored build directory and can create a new identity if it is missing. Coordinate build and deployment identity with Harshita before invoking that build on another machine. The program has not been deployed. Business instructions, on-chain integration tests, the DEMO mint, deployment and upgrade authority configuration, and separately authorized deployment are pending.
