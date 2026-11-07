@@ -1,0 +1,96 @@
+# ProofOfWork GitHub verifier
+
+This Node 24/TypeScript service checks a submitted software milestone against its committed requirements. It reads Solana Devnet state, authenticates the contributor through GitHub, validates PR provenance, retrieves the exact committed source file, and evaluates pinned tests inside a restricted Docker container.
+
+The output is an off-chain verification result and, on success, unsigned arguments for `attest_milestone`. The milestone remains `Submitted` until a separately authorized signer submits a valid transaction. This service contains no signing keys or transaction-writing code.
+
+## Supported task and manifest
+
+The first supported assignment is a single ECMAScript module exporting `sum(values)`. It must return the numeric sum of an array, including an empty array and negative and fractional values. It cannot require npm dependencies or other repository files. The trusted suite in `src/manifest.ts` supplies inputs and expected outputs. Student-provided tests are unused.
+
+A v1 manifest is a UTF-8 compact JSON object produced with `JSON.stringify`, without a BOM, trailing newline, duplicate keys or extra fields. Property order may vary, but the exact bytes must be retained and committed before funding. The service hashes those original bytes before parsing. Formatting changes yield another commitment and are rejected if they disagree with the on-chain requirements.
+
+| Field | Required value |
+|---|---|
+| `version` | Integer `1` |
+| `repositoryId` | Positive decimal string encoding a GitHub repository ID within u64 |
+| `task` | `sum-v1` |
+| `entry` | Relative `.mjs` path, such as `solution.mjs`, with no traversal, URLs or symlinks |
+| `interface` | `export function sum(values)` |
+| `tests` | Object with `suite: "sum-v1"` and `sha256` equal to the exported `TEST_DIGEST` |
+| `runner` | Object containing the fields below |
+| `passing` | `all` |
+
+The test digest is SHA-256 over the UTF-8 `JSON.stringify(CASES)` bytes from the trusted suite. This pins the exact service-owned test vectors.
+
+Runner fields are `image` (an operator-approved image reference pinned with `@sha256:` and a 64-digit lowercase digest), `network: "none"`, `user: "65534:65534"`, `readOnly: true`, `cpus` (0.1–1), `memoryMb` (integer 64–256), `pids` (integer 8–64), `timeoutMs` (integer 100–10000 per case), and `outputBytes` (integer 128–16384 per case). The image must exactly match the service's trusted configuration. A client cannot select an arbitrary image or execution policy.
+
+Requirements use `SHA256(ASCII("proofwork:requirements:v1") || exact_manifest_bytes)`. Evidence uses the approved fixed-width binary concatenation:
+
+```text
+ASCII("proofwork:submission:v1")
+program_id[32] || milestone[32] || student[32] || requirements_hash[32]
+repo_id_u64_le || contributor_id_u64_le || commit_sha_raw[20] || nonce[32]
+```
+
+The service decodes canonical base58 public keys, exact lowercase 40-digit SHA-1 Git commits, lowercase 64-digit hashes/nonces, and decimal u64 IDs. It rejects overflow, malformed lengths and mismatched commitments.
+
+## GitHub authentication and provenance
+
+Each request must carry a GitHub **user** access token in its Authorization Bearer header. Keep tokens out of URLs, request bodies, logs and Git. Use an OAuth user token or fine-grained personal access token with access to the relevant repository and read access to contents and pull requests. Application installation tokens or caller-supplied usernames do not establish a contributor identity.
+
+The service calls GitHub's authenticated `/user`, repository, commit, pull request and contents endpoints. It compares immutable numeric IDs, the PR's target repository and author, and its exact head SHA. Fork-based PRs are accepted only when the PR targets the registered repository, the authenticated user is its author, and the same commit is accessible through the registered repository's API. This proves the accepted PR workflow, not exclusive authorship of every line.
+
+All API destinations are constructed under `https://api.github.com`. Redirects are refused. Source retrieval uses the validated commit as the contents API ref and checks the returned Git blob SHA. No arbitrary clone URL, archive extraction, checkout script or repository installation command runs on the host. Only the supported entry module is retrieved.
+
+## Chain validation and unsigned attestation
+
+The read-only RPC adapter supports the approved public endpoint `https://api.devnet.solana.com`. Custom endpoints are rejected in this initial version. With configuration absent, the request returns `missing_onchain_state`.
+
+The adapter validates program ownership, exact account lengths and Anchor discriminators, canonical Internship/Milestone/Submission PDAs and bumps, sponsor-parent links, assigned student, designated verifier, linked submission, status `Submitted`, zero prior verification time and timely submission. Manifest and evidence digests must match on-chain values. It reads state again after execution and rejects a changed snapshot.
+
+Successful responses contain the milestone and submission addresses, verifier public key, and `expected_student`, `expected_requirements_hash`, `expected_evidence_hash` derived from validated state. A future signer must authenticate this service, independently reread current chain bindings, and sign only the approved instruction. Never sign client-supplied result JSON. Never use the deployment keypair as the verification authority.
+
+## Isolated execution
+
+Install and configure a compatible Docker Engine separately. There is no host-execution fallback. An operator must audit and provision a trusted Linux image containing Node, pin its actual digest, and set the same reference used by the manifest. Image pulling is disabled during verification.
+
+Every test case runs in a fresh container with no network, a non-root user, read-only root and source mount, all capabilities dropped, privilege escalation disabled, CPU/memory/swap/process/file-descriptor limits, bounded combined stdout/stderr, and an execution timeout. The Docker socket, service credentials, GitHub token, evidence nonce and Solana keys are never mounted or passed into the container. The host compares captured output against trusted expected values. Container logs are disabled. Containers are force-removed by generated name on all execution paths, including timeouts.
+
+The worker environment must be dedicated to untrusted work. Docker containment is an operational trust boundary, not a proof that code is harmless. A passing finite test suite establishes only the agreed acceptance checks. Expected output is evaluated by the host, while submitted code can intentionally target those tests.
+
+## Local setup and HTTP use
+
+From this directory:
+
+```sh
+npm ci --ignore-scripts
+npm run check
+npm test
+npm run build
+node --env-file=.env dist/src/server.js
+```
+
+Create a local ignored `.env` from `.env.example` and supply values securely. `SOLANA_RPC_URL` must be the approved Devnet endpoint. `VERIFIER_PUBLIC_KEY` is the designated verifier's public address, never a keypair. `TRUSTED_RUNNER_IMAGE` is the audited, locally available image digest. Optional `PORT` defaults to 8787. No environment values are supplied by this repository.
+
+The service listens on `127.0.0.1` and accepts `POST /verify` with `Content-Type: application/json` and the contributor's Bearer token. It rejects browser Origin headers. Keep it behind a separately authenticated, TLS-protected application backend before any remote exposure.
+
+The JSON request has exactly these fields:
+
+- `manifestBase64` holding the exact requirements manifest bytes.
+- `milestone`, `student`, `repositoryId`, `contributorId`, `commit` and `nonce` providing the evidence preimage.
+- `owner`, `repository` and positive integer `pullRequest` identifying the GitHub PR.
+
+Store local request fixtures under ignored `.local/` and never log the body or Authorization header. Responses include safe reason codes, authenticated IDs and commit after provenance checks, public chain bindings, test IDs and pass/fail outcomes, and execution timestamps. Raw code, stdout/stderr, nonce and credentials are omitted.
+
+Requests are serialized per milestone within one service process and capped at four active jobs. No successful response is cached. Repeated requests reauthenticate and reread the current chain state. Multi-process coordination and a durable attestation job ledger belong to the future signing integration.
+
+## Validation and current limits
+
+`npm test` runs deterministic commitment vectors, manifest validation, GitHub/RPC mocks, pipeline integration, runner command and failure tests, and local HTTP tests. It uses no real credentials or on-chain accounts. `npm run check` performs strict TypeScript checks including unused code. No separate lint tool is configured.
+
+`npm run test:sandbox` runs the benign passing and failing fixtures only inside the configured Docker runner. Without a trusted image it explicitly reports a skip. The current development environment has neither Docker nor Podman available, so actual container execution and live GitHub/RPC integration remain unverified. Mocked passing outcomes are test doubles only.
+
+The service does not implement OAuth enrollment, deployment, mint creation, stipends, signing or on-chain transactions. The program's existing on-chain authorization and replay checks remain authoritative. This is a fictional Devnet DEMO-token prototype.
+
+Sources used for the integration are the [GitHub authenticated-user API](https://docs.github.com/en/rest/users/users#get-the-authenticated-user), [GitHub pull-request API](https://docs.github.com/en/rest/pulls/pulls#get-a-pull-request), and [Docker runtime controls](https://docs.docker.com/engine/containers/run/).
