@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdtemp, writeFile, chmod, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { CASES, type Manifest } from "./manifest.js";
+import { CASES, IMAGE_PATTERN, type Manifest } from "./manifest.js";
 import { VerificationError } from "./errors.js";
 
 export interface Outcome { id: string; passed: boolean }
@@ -30,9 +30,9 @@ const result = await sum(input);
 process.stdout.write(JSON.stringify(result));`;
 
 // No student path, image option, environment, command, or mount is interpolated into a shell.
-export function runArguments(name: string, directory: string, manifest: Manifest, input: readonly number[]): string[] {
+export function createArguments(name: string, directory: string, manifest: Manifest, input: readonly number[]): string[] {
   const r = manifest.runner;
-  return ["run", "--rm", "--pull=never", "--name", name, "--network=none", "--user=65534:65534",
+  return ["create", "--pull=never", "--name", name, "--label=proofwork.verifier=true", "--network=none", "--user=65534:65534",
     "--read-only", "--cap-drop=ALL", "--security-opt=no-new-privileges",
     "--cpus=" + r.cpus, "--memory=" + r.memoryMb + "m", "--memory-swap=" + r.memoryMb + "m",
     "--pids-limit=" + r.pids, "--ulimit=nofile=64:64", "--ipc=none", "--log-driver=none",
@@ -42,7 +42,7 @@ export function runArguments(name: string, directory: string, manifest: Manifest
 export class DockerRunner implements Runner {
   constructor(private readonly trustedImage: string | undefined, private readonly command: Command = dockerCommand) {}
   async run(source: Buffer, manifest: Manifest): Promise<Outcome[]> {
-    if (!this.trustedImage || this.trustedImage !== manifest.runner.image) throw new VerificationError("runner_unavailable");
+    if (!this.trustedImage || !IMAGE_PATTERN.test(this.trustedImage) || this.trustedImage !== manifest.runner.image) throw new VerificationError("runner_unavailable");
     let directory: string | undefined;
     try {
       const available = await this.command(["version", "--format", "{{.Server.Version}}"], 5_000, 4096);
@@ -54,18 +54,45 @@ export class DockerRunner implements Runner {
       const outcomes: Outcome[] = [];
       for (const test of CASES) {
         const name = "proofwork-" + randomUUID();
-        let result: CommandResult;
+        let containerId: string | undefined;
+        let passed = false;
         try {
-          result = await this.command(runArguments(name, directory, manifest, test.input), manifest.runner.timeoutMs, manifest.runner.outputBytes);
+          // Creating a stopped container first prevents a timed-out creation
+          // request from starting student code after cleanup has already run.
+          const created = await this.command(createArguments(name, directory, manifest, test.input), 10_000, 4096);
+          if (created.timeout || created.overflow || created.code !== 0 || created.stderr !== ""
+              || !/^[0-9a-f]{64}$/.test(created.stdout.trim())) {
+            throw new VerificationError("runner_failure");
+          }
+          containerId = created.stdout.trim();
+          const result = await this.command(["start", "--attach", containerId], manifest.runner.timeoutMs, manifest.runner.outputBytes);
+          if (result.timeout) throw new VerificationError("runner_timeout");
+          if (result.overflow || result.code === null) throw new VerificationError("runner_failure");
+
+          const inspected = await this.command(["inspect", "--format", "{{json .State}}", containerId], 5_000, 4096);
+          if (inspected.timeout || inspected.overflow || inspected.code !== 0 || inspected.stderr !== "") {
+            throw new VerificationError("runner_failure");
+          }
+          const state: unknown = JSON.parse(inspected.stdout);
+          if (state === null || typeof state !== "object") throw new VerificationError("runner_failure");
+          const exit = state as Record<string, unknown>;
+          if (exit.Status !== "exited" || exit.Running !== false || exit.OOMKilled !== false
+              || exit.Error !== "" || !Number.isInteger(exit.ExitCode)) {
+            throw new VerificationError("runner_failure");
+          }
+          // Docker CLI success alone does not establish the container exit status.
+          passed = result.code === 0 && exit.ExitCode === 0 && result.stderr === ""
+            && result.stdout === JSON.stringify(test.expected);
         } finally {
-          // Killing the CLI does not necessarily stop the container. Force cleanup by its generated name.
-          const cleanup = await this.command(["rm", "-f", name], 5_000, 4096);
-          if (cleanup.timeout || cleanup.overflow || (cleanup.code !== 0 && !cleanup.stderr.includes("No such container"))) throw new VerificationError("runner_failure");
+          // Always remove the exact created container, even after CLI timeout.
+          // A failed creation may leave a stopped container under its generated name.
+          const cleanup = await this.command(["rm", "-f", containerId ?? name], 5_000, 4096);
+          const absentAfterFailedCreation = !containerId && cleanup.code !== 0
+            && cleanup.stderr.includes("No such container");
+          if (cleanup.timeout || cleanup.overflow || (cleanup.code !== 0 && !absentAfterFailedCreation)) {
+            throw new VerificationError("runner_failure");
+          }
         }
-        if (result.timeout) throw new VerificationError("runner_timeout");
-        if (result.overflow) throw new VerificationError("runner_failure");
-        if (result.code === 125 || result.code === 126 || result.code === 127 || result.code === null) throw new VerificationError("runner_failure");
-        const passed = result.code === 0 && result.stderr === "" && result.stdout === JSON.stringify(test.expected);
         outcomes.push({ id: test.id, passed });
       }
       return outcomes;
